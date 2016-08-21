@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">stooq</string>
+    <string name="s300">5 min</string>
+    <string name="s60">60 sek</string>
+    <string name="s30">30 sek</string>
+    <string name="s10">10 sek</string>
+    <string name="s1">1 sek</string>
+    <string name="settings">Częstotliwość aktualizacji</string>
+</resources>

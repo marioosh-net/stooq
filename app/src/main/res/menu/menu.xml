@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/settings" android:title="@string/settings" app:showAsAction="never">
+        <menu>
+            <group android:checkableBehavior="single">
+                <item android:id="@+id/s1" android:title="@string/s1" app:showAsAction="never"  />
+                <item android:id="@+id/s10" android:title="@string/s10" app:showAsAction="never"/>
+                <item android:id="@+id/s30" android:title="@string/s30" app:showAsAction="never"/>
+                <item android:id="@+id/s60" android:title="@string/s60" app:showAsAction="never"/>
+                <item android:id="@+id/s300" android:title="@string/s300" app:showAsAction="never"/>
+            </group>
+        </menu>
+    </item>
+</menu>
