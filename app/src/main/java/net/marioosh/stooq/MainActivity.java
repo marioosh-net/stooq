@@ -27,10 +27,8 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.CacheControl;
@@ -58,7 +56,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
     private Subscription subscription;
     private Observer observer;
-    private Observable<Map<Index.Type, String>> observable;
+    private Observable<List<Index>> observable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,11 +79,11 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
         observable = Observable.interval(prefs.getLong(DELAY_KEY, DEFAULT_DELAY), TimeUnit.SECONDS, Schedulers.io())
                 .startWith(0l) // pierwsze requesty od razu
-            .map(new Func1<Long, Map<Index.Type, String>>() {
+            .map(new Func1<Long, List<Index>>() {
                 @Override
-                public Map<Index.Type, String> call(Long aLong) {
+                public List<Index> call(Long aLong) {
                     final OkHttpClient client = HttpClient.getInstance();
-                    Map<Index.Type, String> m = new HashMap<Index.Type, String>();
+                    List<Index> m = new ArrayList<Index>();
                     for (final Index.Type t : Index.Type.values()) {
                         Request request = new Request.Builder()
                                 .cacheControl(CacheControl.FORCE_NETWORK)
@@ -97,15 +95,16 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                             Elements elements = document.select(t.getCssSelector());
                             String value = elements.get(0).childNode(0).toString();
                             Log.d("parsed", t + "=" + value);
-                            m.put(t, value);
+                            m.add(new Index(t, value));
                         } catch (IOException e) {
+                            Log.e("error", e+"");
                         }
                     }
                     return m;
                 }
             });
 
-        observer = new Subscriber<Map<Index.Type, String>>() {
+        observer = new Subscriber<List<Index>>() {
             @Override
             public void onCompleted() {
             }
@@ -116,14 +115,14 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
             }
 
             @Override
-            public void onNext(Map<Index.Type, String> map) {
-                for(Index.Type t: map.keySet()) {
-                    String value = map.get(t);
+            public void onNext(List<Index> map) {
+                for(Index index: map) {
+                    String value = index.getValue();
                     boolean found = false;
                     for (int i = 0; i < data.size(); i++) {
                         Index d = data.get(i);
                         d.setTime(System.currentTimeMillis());
-                        if (d.getType() == t) {
+                        if (d.getType() == index.getType()) {
                             found = true;
                             if (!d.getValue().equals(value)) {
                                 d.setValue(value);
@@ -133,7 +132,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                         }
                     }
                     if (!found) {
-                        data.add(new Index(t, value));
+                        data.add(index);
                     }
                 }
                 rv.getAdapter().notifyDataSetChanged();
