@@ -38,6 +38,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import rx.Observable;
+import rx.Observer;
 import rx.Subscriber;
 import rx.Subscription;
 import rx.android.schedulers.AndroidSchedulers;
@@ -56,6 +57,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     private final List<Index> data = new ArrayList<Index>();
 
     private Subscription subscription;
+    private Observer observer;
     private Observable<Map<Index.Type, String>> observable;
 
     @Override
@@ -78,6 +80,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         rv.setAdapter(new MyAdapter());
 
         observable = Observable.interval(prefs.getLong(DELAY_KEY, DEFAULT_DELAY), TimeUnit.SECONDS, Schedulers.io())
+                .startWith(0l) // pierwsze requesty od razu
             .map(new Func1<Long, Map<Index.Type, String>>() {
                 @Override
                 public Map<Index.Type, String> call(Long aLong) {
@@ -102,43 +105,45 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                 }
             });
 
+        observer = new Subscriber<Map<Index.Type, String>>() {
+            @Override
+            public void onCompleted() {
+            }
+
+            @Override
+            public void onError(Throwable e) {
+                Log.e("error", e+"");
+            }
+
+            @Override
+            public void onNext(Map<Index.Type, String> map) {
+                for(Index.Type t: map.keySet()) {
+                    String value = map.get(t);
+                    boolean found = false;
+                    for (int i = 0; i < data.size(); i++) {
+                        Index d = data.get(i);
+                        d.setTime(System.currentTimeMillis());
+                        if (d.getType() == t) {
+                            found = true;
+                            if (!d.getValue().equals(value)) {
+                                d.setValue(value);
+                                d.setUpdated(true);
+                            }
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        data.add(new Index(t, value));
+                    }
+                }
+                rv.getAdapter().notifyDataSetChanged();
+            }
+        };
+
         subscription = observable
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
-            .subscribe(new Subscriber<Map<Index.Type, String>>() {
-                @Override
-                public void onCompleted() {
-                }
-
-                @Override
-                public void onError(Throwable e) {
-                    Log.e("error", e+"");
-                }
-
-                @Override
-                public void onNext(Map<Index.Type, String> map) {
-                    for(Index.Type t: map.keySet()) {
-                        String value = map.get(t);
-                        boolean found = false;
-                        for (int i = 0; i < data.size(); i++) {
-                            Index d = data.get(i);
-                            d.setTime(System.currentTimeMillis());
-                            if (d.getType() == t) {
-                                found = true;
-                                if (!d.getValue().equals(value)) {
-                                    d.setValue(value);
-                                    d.setUpdated(true);
-                                }
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            data.add(new Index(t, value));
-                        }
-                    }
-                    rv.getAdapter().notifyDataSetChanged();
-                }
-            });
+            .subscribe(observer);
     }
 
     @Override
