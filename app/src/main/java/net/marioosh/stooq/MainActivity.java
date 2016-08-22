@@ -47,7 +47,6 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
     private final static long DEFAULT_DELAY = 30; // sekundy
     private final static String DELAY_KEY = "delay";
-    private static final String DATA_URL = "http://stooq.pl/";
 
     private SharedPreferences prefs;
 
@@ -83,7 +82,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                 @Override
                 public List<Index> call(Long aLong) {
                     final OkHttpClient client = HttpClient.getInstance();
-                    List<Index> m = new ArrayList<Index>();
+                    List<Index> l = new ArrayList<Index>();
                     for (final Index.Type t : Index.Type.values()) {
                         Request request = new Request.Builder()
                                 .cacheControl(CacheControl.FORCE_NETWORK)
@@ -95,12 +94,12 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                             Elements elements = document.select(t.getCssSelector());
                             String value = elements.get(0).childNode(0).toString();
                             Log.d("parsed", t + "=" + value);
-                            m.add(new Index(t, value));
+                            l.add(new Index(t, value));
                         } catch (IOException e) {
                             Log.e("error", e+"");
                         }
                     }
-                    return m;
+                    return l;
                 }
             });
 
@@ -115,8 +114,8 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
             }
 
             @Override
-            public void onNext(List<Index> map) {
-                for(Index index: map) {
+            public void onNext(List<Index> l) {
+                for(Index index: l) {
                     String value = index.getValue();
                     boolean found = false;
                     for (int i = 0; i < data.size(); i++) {
