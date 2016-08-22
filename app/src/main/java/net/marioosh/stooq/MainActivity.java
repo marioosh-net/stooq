@@ -56,6 +56,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     private Subscription subscription;
     private Observer observer;
     private Observable<List<Index>> observable;
+    private Observable<Long> sourceObservable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,32 +77,36 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
         rv.setAdapter(new MyAdapter());
 
-        observable = Observable.interval(prefs.getLong(DELAY_KEY, DEFAULT_DELAY), TimeUnit.SECONDS, Schedulers.io())
+    }
+
+    private void setupChecker() {
+        sourceObservable = Observable.interval(prefs.getLong(DELAY_KEY, DEFAULT_DELAY), TimeUnit.SECONDS, Schedulers.io());
+        observable = sourceObservable
                 .startWith(0l) // pierwsze requesty od razu
-            .map(new Func1<Long, List<Index>>() {
-                @Override
-                public List<Index> call(Long aLong) {
-                    final OkHttpClient client = HttpClient.getInstance();
-                    List<Index> l = new ArrayList<Index>();
-                    for (final Index.Type t : Index.Type.values()) {
-                        Request request = new Request.Builder()
-                                .cacheControl(CacheControl.FORCE_NETWORK)
-                                .url(t.getSrcUrl())
-                                .build();
-                        try {
-                            Response response = client.newCall(request).execute();
-                            Document document = Jsoup.parse(response.body().string());
-                            Elements elements = document.select(t.getCssSelector());
-                            String value = elements.get(0).childNode(0).toString();
-                            Log.d("parsed", t + "=" + value);
-                            l.add(new Index(t, value));
-                        } catch (IOException e) {
-                            Log.e("error", e+"");
+                .map(new Func1<Long, List<Index>>() {
+                    @Override
+                    public List<Index> call(Long aLong) {
+                        final OkHttpClient client = HttpClient.getInstance();
+                        List<Index> l = new ArrayList<Index>();
+                        for (final Index.Type t : Index.Type.values()) {
+                            Request request = new Request.Builder()
+                                    .cacheControl(CacheControl.FORCE_NETWORK)
+                                    .url(t.getSrcUrl())
+                                    .build();
+                            try {
+                                Response response = client.newCall(request).execute();
+                                Document document = Jsoup.parse(response.body().string());
+                                Elements elements = document.select(t.getCssSelector());
+                                String value = elements.get(0).childNode(0).toString();
+                                Log.d("parsed", t + "=" + value);
+                                l.add(new Index(t, value));
+                            } catch (IOException e) {
+                                Log.w("error", e+"");
+                            }
                         }
+                        return l;
                     }
-                    return l;
-                }
-            });
+                });
 
         observer = new Subscriber<List<Index>>() {
             @Override
@@ -139,14 +144,15 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         };
 
         subscription = observable
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribe(observer);
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(observer);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        setupChecker();
     }
 
     @Override
@@ -164,7 +170,13 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
         if(key.equals(DELAY_KEY)) {
-            // TODO
+            /**
+             * TODO zmienic sourceObservable i restart
+             * w tej chwili wersja uproszczona tworzy na nowo
+             * observable i observer'a
+             */
+            subscription.unsubscribe();
+            setupChecker();
         }
     }
 
