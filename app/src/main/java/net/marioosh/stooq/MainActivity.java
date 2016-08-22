@@ -33,6 +33,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
+import okhttp3.CacheControl;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
@@ -110,31 +111,33 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
     private void fetchData() {
         OkHttpClient client = HttpClient.getInstance();
-        Request request = new Request.Builder()
-                .url(DATA_URL)
-                .build();
 
-        client.newCall(request).enqueue(new Callback() {
+        for(final Index.Type t: Index.Type.values()) {
+            Request request = new Request.Builder()
+                    .cacheControl(CacheControl.FORCE_NETWORK)
+                    .url(t.getSrcUrl())
+                    .build();
 
-            @Override
-            public void onFailure(Call call, final IOException e) {
-                new Handler(Looper.getMainLooper()).post(new Runnable() {
-                    @Override
-                    public void run() {
-                        Toast.makeText(MainActivity.this, e+"", Toast.LENGTH_SHORT).show();
-                    }
-                });
-            }
+            client.newCall(request).enqueue(new Callback() {
 
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if(!response.isSuccessful()) {
-                    return;
+                @Override
+                public void onFailure(Call call, final IOException e) {
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, e+"", Toast.LENGTH_SHORT).show();
+                        }
+                    });
                 }
 
-                Document document = Jsoup.parse(response.body().string());
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if(!response.isSuccessful()) {
+                        return;
+                    }
 
-                for(Index.Type t: Index.Type.values()) {
+                    Document document = Jsoup.parse(response.body().string());
+
                     Elements elements = document.select(t.getCssSelector());
                     String value = elements.get(0).childNode(0).toString();
                     Log.d("parsed", t +"="+value);
@@ -155,16 +158,16 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                     if(!found) {
                         data.add(new Index(t, value));
                     }
-                }
 
-                new Handler(Looper.getMainLooper()).post(new Runnable() {
-                    @Override
-                    public void run() {
-                        rv.getAdapter().notifyDataSetChanged();
-                    }
-                });
-            }
-        });
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            rv.getAdapter().notifyDataSetChanged();
+                        }
+                    });
+                }
+            });
+        }
     }
 
     private class MyAdapter extends RecyclerView.Adapter<ViewHolder> {
