@@ -4,8 +4,6 @@ import android.animation.ArgbEvaluator;
 import android.animation.ObjectAnimator;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.preference.PreferenceManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
@@ -17,7 +15,6 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import net.marioosh.stooq.stuff.HttpClient;
 import net.marioosh.stooq.stuff.Index;
@@ -30,15 +27,22 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.CacheControl;
-import okhttp3.Call;
-import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import rx.Observable;
+import rx.Subscriber;
+import rx.Subscription;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.functions.Func1;
+import rx.schedulers.Schedulers;
 
 public class MainActivity extends AppCompatActivity implements SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -51,8 +55,8 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     private RecyclerView rv;
     private final List<Index> data = new ArrayList<Index>();
 
-    private Handler handler;
-    private Runnable runnable;
+    private Subscription subscription;
+    private Observable<Map<Index.Type, String>> observable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,26 +77,79 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
         rv.setAdapter(new MyAdapter());
 
-        handler = new Handler();
-        runnable = new Runnable() {
-            @Override
-            public void run() {
-                fetchData();
-                handler.postDelayed(this, prefs.getLong(DELAY_KEY, DEFAULT_DELAY)*1000);
-            }
-        };
+        observable = Observable.interval(prefs.getLong(DELAY_KEY, DEFAULT_DELAY), TimeUnit.SECONDS, Schedulers.io())
+            .map(new Func1<Long, Map<Index.Type, String>>() {
+                @Override
+                public Map<Index.Type, String> call(Long aLong) {
+                    final OkHttpClient client = HttpClient.getInstance();
+                    Map<Index.Type, String> m = new HashMap<Index.Type, String>();
+                    for (final Index.Type t : Index.Type.values()) {
+                        Request request = new Request.Builder()
+                                .cacheControl(CacheControl.FORCE_NETWORK)
+                                .url(t.getSrcUrl())
+                                .build();
+                        try {
+                            Response response = client.newCall(request).execute();
+                            Document document = Jsoup.parse(response.body().string());
+                            Elements elements = document.select(t.getCssSelector());
+                            String value = elements.get(0).childNode(0).toString();
+                            Log.d("parsed", t + "=" + value);
+                            m.put(t, value);
+                        } catch (IOException e) {
+                        }
+                    }
+                    return m;
+                }
+            });
+
+        subscription = observable
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(new Subscriber<Map<Index.Type, String>>() {
+                @Override
+                public void onCompleted() {
+                }
+
+                @Override
+                public void onError(Throwable e) {
+                    Log.e("error", e+"");
+                }
+
+                @Override
+                public void onNext(Map<Index.Type, String> map) {
+                    for(Index.Type t: map.keySet()) {
+                        String value = map.get(t);
+                        boolean found = false;
+                        for (int i = 0; i < data.size(); i++) {
+                            Index d = data.get(i);
+                            d.setTime(System.currentTimeMillis());
+                            if (d.getType() == t) {
+                                found = true;
+                                if (!d.getValue().equals(value)) {
+                                    d.setValue(value);
+                                    d.setUpdated(true);
+                                }
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            data.add(new Index(t, value));
+                        }
+                    }
+                    rv.getAdapter().notifyDataSetChanged();
+                }
+            });
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        handler.post(runnable);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        handler.removeCallbacks(runnable);
+        subscription.unsubscribe();
     }
 
     @Override
@@ -104,69 +161,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
         if(key.equals(DELAY_KEY)) {
-            handler.removeCallbacks(runnable);
-            handler.post(runnable);
-        }
-    }
-
-    private void fetchData() {
-        OkHttpClient client = HttpClient.getInstance();
-
-        for(final Index.Type t: Index.Type.values()) {
-            Request request = new Request.Builder()
-                    .cacheControl(CacheControl.FORCE_NETWORK)
-                    .url(t.getSrcUrl())
-                    .build();
-
-            client.newCall(request).enqueue(new Callback() {
-
-                @Override
-                public void onFailure(Call call, final IOException e) {
-                    new Handler(Looper.getMainLooper()).post(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(MainActivity.this, e+"", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) throws IOException {
-                    if(!response.isSuccessful()) {
-                        return;
-                    }
-
-                    Document document = Jsoup.parse(response.body().string());
-
-                    Elements elements = document.select(t.getCssSelector());
-                    String value = elements.get(0).childNode(0).toString();
-                    Log.d("parsed", t +"="+value);
-
-                    boolean found = false;
-                    for(int i=0;i<data.size();i++) {
-                        Index d = data.get(i);
-                        d.setTime(System.currentTimeMillis());
-                        if (d.getType() == t) {
-                            found = true;
-                            if (!d.getValue().equals(value)) {
-                                d.setValue(value);
-                                d.setUpdated(true);
-                            }
-                            break;
-                        }
-                    }
-                    if(!found) {
-                        data.add(new Index(t, value));
-                    }
-
-                    new Handler(Looper.getMainLooper()).post(new Runnable() {
-                        @Override
-                        public void run() {
-                            rv.getAdapter().notifyDataSetChanged();
-                        }
-                    });
-                }
-            });
+            // TODO
         }
     }
 
