@@ -6,25 +6,25 @@ package net.marioosh.stooq.stuff;
 public class Index {
 
     public enum Type {
-        WIG("http://stooq.pl/q/?s=wig","#aq_wig_c2"),
-        WIG20("http://stooq.pl/q/?s=wig20","#aq_wig20_c2"),
-        mWIG40("http://stooq.pl/q/?s=mwig40","#aq_mwig40_c2"),
-        sWIG80("http://stooq.pl/q/?s=swig80","#aq_swig80_c2");
+        WIG("wig","#aq_wig_c2"),
+        WIG20("wig20","#aq_wig20_c2"),
+        mWIG40("mwig40","#aq_mwig40_c2"),
+        sWIG80("swig80","#aq_swig80_c2");
 
         private final String cssSelector;
-        private final String srcUrl;
+        private final String sParam;
 
-        Type(String srcUrl, String cssSelector) {
+        Type(String sParam, String cssSelector) {
             this.cssSelector = cssSelector;
-            this.srcUrl = srcUrl;
+            this.sParam = sParam;
         }
 
         public String getCssSelector() {
             return cssSelector;
         }
 
-        public String getSrcUrl() {
-            return srcUrl;
+        public String getsParam() {
+            return sParam;
         }
     }
 
@@ -85,5 +85,15 @@ public class Index {
     @Override
     public int hashCode() {
         return 0;
+    }
+
+    @Override
+    public String toString() {
+        return "Index{" +
+                "type=" + type +
+                ", value='" + value + '\'' +
+                ", time=" + time +
+                ", updated=" + updated +
+                '}';
     }
 }

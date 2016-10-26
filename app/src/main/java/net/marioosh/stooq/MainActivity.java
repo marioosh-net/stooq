@@ -16,7 +16,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
-import net.marioosh.stooq.stuff.HttpClient;
+import net.marioosh.stooq.stuff.Api;
+import net.marioosh.stooq.stuff.ApiImpl;
 import net.marioosh.stooq.stuff.Index;
 
 import org.jsoup.Jsoup;
@@ -31,16 +32,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
-import okhttp3.CacheControl;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
+import okhttp3.ResponseBody;
 import rx.Observable;
 import rx.Observer;
 import rx.Subscriber;
 import rx.Subscription;
 import rx.android.schedulers.AndroidSchedulers;
 import rx.functions.Func1;
+import rx.functions.FuncN;
 import rx.schedulers.Schedulers;
 
 public class MainActivity extends AppCompatActivity implements SharedPreferences.OnSharedPreferenceChangeListener {
@@ -57,6 +56,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     private Observer observer;
     private Observable<List<Index>> observable;
     private Observable<Long> sourceObservable;
+    private Api api;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,34 +77,42 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
         rv.setAdapter(new MyAdapter());
 
+        api = ApiImpl.getInstance();
     }
 
     private void setupChecker() {
         sourceObservable = Observable.interval(prefs.getLong(DELAY_KEY, DEFAULT_DELAY), TimeUnit.SECONDS, Schedulers.io());
+
+        final List<Observable<ResponseBody>> observables = new ArrayList<Observable<ResponseBody>>();
+        final Index.Type[] types = Index.Type.values();
+        for (final Index.Type t : types) {
+            observables.add(api.getIndex(t.getsParam()));
+        }
+
         observable = sourceObservable
                 .startWith(0l) // pierwsze requesty od razu
-                .map(new Func1<Long, List<Index>>() {
+                .flatMap(new Func1<Long, Observable<List<Index>>>() {
                     @Override
-                    public List<Index> call(Long aLong) {
-                        final OkHttpClient client = HttpClient.getInstance();
-                        List<Index> l = new ArrayList<Index>();
-                        for (final Index.Type t : Index.Type.values()) {
-                            Request request = new Request.Builder()
-                                    .cacheControl(CacheControl.FORCE_NETWORK)
-                                    .url(t.getSrcUrl())
-                                    .build();
-                            try {
-                                Response response = client.newCall(request).execute();
-                                Document document = Jsoup.parse(response.body().string());
-                                Elements elements = document.select(t.getCssSelector());
-                                String value = elements.get(0).childNode(0).toString();
-                                Log.d("parsed", t + "=" + value);
-                                l.add(new Index(t, value));
-                            } catch (IOException e) {
-                                Log.w("error", e+"");
+                    public Observable<List<Index>> call(Long aLong) {
+                        return Observable.zip(observables, new FuncN<List<Index>>() {
+                            @Override
+                            public List<Index> call(Object... args) {
+                                List<Index> l = new ArrayList<Index>();
+                                for(int i = 0;i<args.length; i++) {
+                                    Index.Type t = types[i];
+                                    ResponseBody body = (ResponseBody)args[i];
+                                    try {
+                                        Document document = Jsoup.parse(body.string());
+                                        Elements elements = document.select(t.getCssSelector());
+                                        String value = elements.get(0).childNode(0).toString();
+                                        l.add(new Index(t, value));
+                                    } catch (IOException e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                                return l;
                             }
-                        }
-                        return l;
+                        });
                     }
                 });
 
